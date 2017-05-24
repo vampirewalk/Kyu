@@ -9,16 +9,16 @@
 import Foundation
 
 
-internal enum KyuJobError: ErrorType
+internal enum KyuJobError: Error
 {
-    case JSONFileNotFound
+    case jsonFileNotFound
     case invalidJSON
 }
 
 
 internal final class KyuJob
 {
-    private static let JSONFileName = "JSON"
+    fileprivate static let JSONFileName = "JSON"
     
     /**
      Use this method to create a job. It firstly creates the jobs directory structure
@@ -27,52 +27,52 @@ internal final class KyuJob
      - parameter arguments:    Job arguments
      - parameter queueDirectoryURL: The queue directory URL
      */
-    internal class func createJob(identifier: String, arguments: [String : AnyObject], queueDirectoryURL: NSURL)
+    internal class func createJob(_ identifier: String, arguments: [String : AnyObject], queueDirectoryURL: URL)
     {
-        let fileManager = NSFileManager.defaultManager()
+        let fileManager = FileManager.default
         
         // Temporary directory
-        let temporaryDirectory = NSURL(string: NSTemporaryDirectory())!
-        let kyuTemporaryDirectory = temporaryDirectory.URLByAppendingPathComponent("KyuTemp")
+        let temporaryDirectory = URL(string: NSTemporaryDirectory())!
+        let kyuTemporaryDirectory = temporaryDirectory.appendingPathComponent("KyuTemp")
         
         // Create job in temporary directory
-        let jobTemporaryDirectoryURL = kyuTemporaryDirectory.URLByAppendingPathComponent(identifier)
-        try! fileManager.createDirectoryAtPath(jobTemporaryDirectoryURL.path!, withIntermediateDirectories: true, attributes: nil)
+        let jobTemporaryDirectoryURL = kyuTemporaryDirectory.appendingPathComponent(identifier)
+        try! fileManager.createDirectory(atPath: jobTemporaryDirectoryURL.path, withIntermediateDirectories: true, attributes: nil)
         
         // Write JSON
-        let JSONFileURL = jobTemporaryDirectoryURL.URLByAppendingPathComponent(KyuJob.JSONFileName)
+        let JSONFileURL = jobTemporaryDirectoryURL.appendingPathComponent(KyuJob.JSONFileName)
         
-        let JSONData = try! NSJSONSerialization.dataWithJSONObject(arguments, options: [])
-        JSONData.writeToFile(JSONFileURL.path!, atomically: true)
+        let JSONData = try! JSONSerialization.data(withJSONObject: arguments, options: [])
+        try? JSONData.write(to: URL(fileURLWithPath: JSONFileURL.path), options: [.atomic])
         
         // Move Job to the queue directory
-        let jobDirectoryURL = queueDirectoryURL.URLByAppendingPathComponent(identifier)
-        try! fileManager.moveItemAtPath(jobTemporaryDirectoryURL.path!, toPath: jobDirectoryURL.path!)
+        let jobDirectoryURL = queueDirectoryURL.appendingPathComponent(identifier)
+        try! fileManager.moveItem(atPath: jobTemporaryDirectoryURL.path, toPath: jobDirectoryURL.path)
     }
     
     // Internal
     internal let JSON: [String : AnyObject]
     
-    internal var processDate: NSDate {
-        guard let directoryAttributes = try? fileManager.attributesOfItemAtPath(self.directoryURL.path!),
-            let modifiedDate = directoryAttributes[NSFileModificationDate] as? NSDate else
+    internal var processDate: Date {
+        guard let directoryAttributes = try? fileManager.attributesOfItem(atPath: self.directoryURL.path),
+            let modifiedDate = directoryAttributes[FileAttributeKey.modificationDate] as? Date else
         {
-            return NSDate()
+            return Date()
         }
         
         return modifiedDate
     }
     
     internal var shouldProcess: Bool {
-        let nowDate = NSDate()
-        return self.processDate.compare(nowDate) == NSComparisonResult.OrderedAscending
+        let nowDate = Date()
+        return self.processDate.compare(nowDate) == ComparisonResult.orderedAscending
     }
     
     internal var numberOfRetries: Int {
         var numberOfRetries = 0
         do
         {
-            let retries = try self.fileManager.contentsOfDirectoryAtPath(self.retryAttemptDirectoryURL.path!)
+            let retries = try self.fileManager.contentsOfDirectory(atPath: self.retryAttemptDirectoryURL.path)
             numberOfRetries = retries.count
         }
         catch { }
@@ -81,32 +81,32 @@ internal final class KyuJob
     }
     
     internal var identifier: String {
-        return self.directoryURL.lastPathComponent!
+        return self.directoryURL.lastPathComponent
     }
     
     // Private
-    private let fileManager = NSFileManager.defaultManager()
-    private let directoryURL: NSURL
+    fileprivate let fileManager = FileManager.default
+    fileprivate let directoryURL: URL
     
-    private let retryAttemptDirectoryName = "retries"
-    private let retryAttemptDirectoryURL: NSURL
+    fileprivate let retryAttemptDirectoryName = "retries"
+    fileprivate let retryAttemptDirectoryURL: URL
     
     // MARK: Initialization
     
-    internal required init(directoryURL: NSURL) throws
+    internal required init(directoryURL: URL) throws
     {
         self.directoryURL = directoryURL
-        self.retryAttemptDirectoryURL = self.directoryURL.URLByAppendingPathComponent(self.retryAttemptDirectoryName, isDirectory: true)
+        self.retryAttemptDirectoryURL = self.directoryURL.appendingPathComponent(self.retryAttemptDirectoryName, isDirectory: true)
         
-        let JSONURL = directoryURL.URLByAppendingPathComponent(KyuJob.JSONFileName)
-        guard let JSONURLPath = JSONURL.path else { throw KyuJobError.JSONFileNotFound }
+        let JSONURL = directoryURL.appendingPathComponent(KyuJob.JSONFileName)
+        let JSONURLPath = JSONURL.path
         
-        guard let JSONData = NSData(contentsOfFile: JSONURLPath) else
+        guard let JSONData = try? Data(contentsOf: URL(fileURLWithPath: JSONURLPath)) else
         {
-            throw KyuJobError.JSONFileNotFound
+            throw KyuJobError.jsonFileNotFound
         }
         
-        guard let JSON = (try NSJSONSerialization.JSONObjectWithData(JSONData, options: [])) as? [String : AnyObject] else
+        guard let JSON = (try JSONSerialization.jsonObject(with: JSONData, options: [])) as? [String : AnyObject] else
         {
             throw KyuJobError.invalidJSON
         }
@@ -120,7 +120,7 @@ internal final class KyuJob
     {
         do
         {
-            try self.fileManager.removeItemAtPath(self.directoryURL.path!)
+            try self.fileManager.removeItem(atPath: self.directoryURL.path)
         }
         catch
         {
@@ -144,14 +144,14 @@ internal final class KyuJob
             }
         }
         
-        let retryFileName = NSUUID().UUIDString
-        let retryFileURL = self.retryAttemptDirectoryURL.URLByAppendingPathComponent(retryFileName)
-        self.fileManager.createFileAtPath(retryFileURL.path!, contents: nil, attributes: nil)
+        let retryFileName = UUID().uuidString
+        let retryFileURL = self.retryAttemptDirectoryURL.appendingPathComponent(retryFileName)
+        self.fileManager.createFile(atPath: retryFileURL.path, contents: nil, attributes: nil)
         
         self.setNextRetryDate()
     }
     
-    private func setNextRetryDate()
+    fileprivate func setNextRetryDate()
     {
         do
         {
@@ -160,11 +160,11 @@ internal final class KyuJob
             let seconds = 30.0
             
             let retryTimeInterval = seconds * pow(numberOfRetries, delta)
-            let retryDate = NSDate().dateByAddingTimeInterval(retryTimeInterval)
+            let retryDate = Date().addingTimeInterval(retryTimeInterval)
             
-            let attributes = [NSFileModificationDate: retryDate]
+            let attributes = [FileAttributeKey.modificationDate: retryDate]
             
-            let directoryPath = self.directoryURL.path!
+            let directoryPath = self.directoryURL.path
             try self.fileManager.setAttributes(attributes, ofItemAtPath: directoryPath)
         }
         catch
@@ -175,13 +175,13 @@ internal final class KyuJob
     
     // MARK: -
     
-    private func retryDirectoryExists() -> Bool
+    fileprivate func retryDirectoryExists() -> Bool
     {
-        return self.fileManager.fileExistsAtPath(self.retryAttemptDirectoryURL.path!)
+        return self.fileManager.fileExists(atPath: self.retryAttemptDirectoryURL.path)
     }
     
-    private func createRetryDirectory() throws
+    fileprivate func createRetryDirectory() throws
     {
-        try self.fileManager.createDirectoryAtPath(self.retryAttemptDirectoryURL.path!, withIntermediateDirectories: true, attributes: nil)
+        try self.fileManager.createDirectory(atPath: self.retryAttemptDirectoryURL.path, withIntermediateDirectories: true, attributes: nil)
     }
 }

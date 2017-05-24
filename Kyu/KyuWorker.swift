@@ -12,24 +12,24 @@ import Foundation
 internal protocol KyuWorkerDataSource
 {
     func workerShouldIncrementRetryCounts() -> Bool
-    func jobForKyuWorker(worker: KyuWorker) -> KyuJobProtocol
-    func baseTemporaryDirectoryForKyuWorker(worker: KyuWorker) -> NSURL
-    func baseJobDirectoryForKyuWorker(worker: KyuWorker) -> NSURL
-    func maximumNumberOfRetriesForKyuWorker(worker: KyuWorker) -> Int
+    func jobForKyuWorker(_ worker: KyuWorker) -> KyuJobProtocol
+    func baseTemporaryDirectoryForKyuWorker(_ worker: KyuWorker) -> URL
+    func baseJobDirectoryForKyuWorker(_ worker: KyuWorker) -> URL
+    func maximumNumberOfRetriesForKyuWorker(_ worker: KyuWorker) -> Int
 }
 
 
 internal protocol KyuWorkerDelegate
 {
-    func worker(worker: KyuWorker, didStartProcessingJob job: KyuJob)
-    func worker(worker: KyuWorker, didFinishProcessingJob job: KyuJob, withResult result: KyuJobResult)
+    func worker(_ worker: KyuWorker, didStartProcessingJob job: KyuJob)
+    func worker(_ worker: KyuWorker, didFinishProcessingJob job: KyuJob, withResult result: KyuJobResult)
 }
 
 
 /**
  KyuConfigurationError
  */
-public enum KyuWorkerInitializationError: ErrorType
+public enum KyuWorkerInitializationError: Error
 {
     case errorCreatingWorkerDirectory
 }
@@ -52,12 +52,12 @@ final internal class KyuWorker
     }
     
     internal var numberOfJobs: Int {
-        let fileManager = NSFileManager.defaultManager()
+        let fileManager = FileManager.default
         
         var numberOfJobs = 0
         do
         {
-            let jobs = try fileManager.contentsOfDirectoryAtPath(self.queueDirectoryPathURL.path!)
+            let jobs = try fileManager.contentsOfDirectory(atPath: self.queueDirectoryPathURL.path)
             numberOfJobs = jobs.count
         }
         catch { }
@@ -66,48 +66,48 @@ final internal class KyuWorker
     }
     
     // Private
-    private let dataSource: KyuWorkerDataSource
+    fileprivate let dataSource: KyuWorkerDataSource
     
     // Queue management
-    private var queueDirectoryPathURL: NSURL {
+    fileprivate var queueDirectoryPathURL: URL {
         let baseURL = self.dataSource.baseJobDirectoryForKyuWorker(self)
-        return baseURL.URLByAppendingPathComponent(self.identifier)
+        return baseURL.appendingPathComponent(self.identifier)
     }
     
-    private let checkJobsTimerQueue: dispatch_queue_t
+    fileprivate let checkJobsTimerQueue: DispatchQueue
     
-    private let queueDirectoryObserverQueue: dispatch_queue_t
-    private var queueDirectoryObserver: dispatch_source_t!
-    private let queueDirectoryOperationQueue = NSOperationQueue()
-    private var isProcessing = false
+    fileprivate let queueDirectoryObserverQueue: DispatchQueue
+    fileprivate var queueDirectoryObserver: DispatchSource!
+    fileprivate let queueDirectoryOperationQueue = OperationQueue()
+    fileprivate var isProcessing = false
     
-    private let jobProcessingOperationQueue: NSOperationQueue = {
-        let operationQueue = NSOperationQueue()
+    fileprivate let jobProcessingOperationQueue: OperationQueue = {
+        let operationQueue = OperationQueue()
         operationQueue.maxConcurrentOperationCount = 1
         
         return operationQueue
     }()
     
-    private let jobFetchingOperationQueue = NSOperationQueue()
+    fileprivate let jobFetchingOperationQueue = OperationQueue()
     
-    private var currentJob: KyuJob?
+    fileprivate var currentJob: KyuJob?
     
     // JSON
-    private let JSONFilename = "JSON"
+    fileprivate let JSONFilename = "JSON"
     
     // Temporary directory
-    private var temporaryDirectoryPathURL: NSURL {
+    fileprivate var temporaryDirectoryPathURL: URL {
         let baseTemporaryDirectoryURL = self.dataSource.baseTemporaryDirectoryForKyuWorker(self)
-        return baseTemporaryDirectoryURL.URLByAppendingPathComponent(self.identifier)
+        return baseTemporaryDirectoryURL.appendingPathComponent(self.identifier)
     }
     
     // Workers
-    private var worker: KyuJobProtocol {
+    fileprivate var worker: KyuJobProtocol {
         return self.dataSource.jobForKyuWorker(self)
     }
     
     // Retry
-    private var maximumNumberOfRetries: Int {
+    fileprivate var maximumNumberOfRetries: Int {
         return self.dataSource.maximumNumberOfRetriesForKyuWorker(self)
     }
     
@@ -118,8 +118,8 @@ final internal class KyuWorker
         self.identifier = identifier
         self.dataSource = dataSource
         
-        self.checkJobsTimerQueue = dispatch_queue_create("com.kyu.\(self.identifier)-check-jobs", nil)
-        self.queueDirectoryObserverQueue = dispatch_queue_create("com.kyu.\(self.identifier)", nil)
+        self.checkJobsTimerQueue = DispatchQueue(label: "com.kyu.\(self.identifier)-check-jobs", attributes: [])
+        self.queueDirectoryObserverQueue = DispatchQueue(label: "com.kyu.\(self.identifier)", attributes: [])
         
         // Create directories
         do
@@ -133,17 +133,17 @@ final internal class KyuWorker
         }
         
         // Queue directory observer
-        let directoryFileDescriptor = UInt(open(self.queueDirectoryPathURL.fileSystemRepresentation, O_EVTONLY))
-        self.queueDirectoryObserver = dispatch_source_create(DISPATCH_SOURCE_TYPE_VNODE, directoryFileDescriptor, DISPATCH_VNODE_WRITE, self.queueDirectoryObserverQueue)
+        let directoryFileDescriptor = UInt(open((self.queueDirectoryPathURL as NSURL).fileSystemRepresentation, O_EVTONLY))
+        self.queueDirectoryObserver = DispatchSource.makeFileSystemObjectSource(fileDescriptor: Int32(directoryFileDescriptor), eventMask: DispatchSource.FileSystemEvent.write, queue: self.queueDirectoryObserverQueue) /*Migrator FIXME: Use DispatchSourceFileSystemObject to avoid the cast*/ as! DispatchSource
         
-        dispatch_source_set_event_handler(self.queueDirectoryObserver, { [weak self] () -> Void in
+        self.queueDirectoryObserver.setEventHandler(handler: { [weak self] () -> Void in
             if let weakSelf = self
             {
                 weakSelf.queueDirectoryUpdated()
             }
         })
         
-        dispatch_resume(self.queueDirectoryObserver)
+        self.queueDirectoryObserver.resume()
         
         // Check queue timer
         self.dispatchCheckJobsQueue()
@@ -159,7 +159,7 @@ final internal class KyuWorker
     
     // MARK: Job management
     
-    internal func cancelJob(identifier: String) -> Bool
+    internal func cancelJob(_ identifier: String) -> Bool
     {
         let job = self.fetchAllJobs().filter { (job) -> Bool in
             return job.identifier == identifier && self.currentJob?.identifier != job.identifier
@@ -174,11 +174,11 @@ final internal class KyuWorker
         return true
     }
     
-    internal func queueJob(arguments: KyuJobArguments) -> String
+    internal func queueJob(_ arguments: KyuJobArguments) -> String
     {
-        let jobIdentifier = NSUUID().UUIDString
+        let jobIdentifier = UUID().uuidString
         
-        self.queueDirectoryOperationQueue.addOperationWithBlock { () -> Void in
+        self.queueDirectoryOperationQueue.addOperation { () -> Void in
             // Create job
             KyuJob.createJob(jobIdentifier, arguments: arguments, queueDirectoryURL: self.queueDirectoryPathURL)
             self.processNextJob()
@@ -187,7 +187,7 @@ final internal class KyuWorker
         return jobIdentifier
     }
     
-    private func processNextJob()
+    fileprivate func processNextJob()
     {
         if self.isProcessing || self.paused
         {
@@ -196,7 +196,7 @@ final internal class KyuWorker
         
         self.isProcessing = true
         
-        self.jobProcessingOperationQueue.addOperationWithBlock { [weak self] () -> Void in
+        self.jobProcessingOperationQueue.addOperation { [weak self] () -> Void in
             guard let weakSelf = self else { return }
             
             if let nextJob = weakSelf.nextJobToProcess()
@@ -247,10 +247,10 @@ final internal class KyuWorker
      whose process data are in the future will not be processed until
      something new is added to the queue.
      */
-    private func dispatchCheckJobsQueue()
+    fileprivate func dispatchCheckJobsQueue()
     {
-        let time = dispatch_time(DISPATCH_TIME_NOW, Int64(20.0 * Double(NSEC_PER_SEC)))
-        dispatch_after(time, self.checkJobsTimerQueue) { [weak self] in
+        let time = DispatchTime.now() + Double(Int64(20.0 * Double(NSEC_PER_SEC))) / Double(NSEC_PER_SEC)
+        self.checkJobsTimerQueue.asyncAfter(deadline: time) { [weak self] in
             self?.processNextJob()
             self?.dispatchCheckJobsQueue()
         }
@@ -258,29 +258,29 @@ final internal class KyuWorker
     
     // MARK: -
     
-    private func queueDirectoryUpdated()
+    fileprivate func queueDirectoryUpdated()
     {
         self.processNextJob()
     }
     
     // MARK: Jobs
     
-    private func nextJobToProcess() -> KyuJob?
+    fileprivate func nextJobToProcess() -> KyuJob?
     {
         let jobs = self.fetchAllJobs()
         return jobs.first
     }
     
-    private func fetchAllJobs() -> [KyuJob]
+    fileprivate func fetchAllJobs() -> [KyuJob]
     {
-        let fileManager = NSFileManager.defaultManager()
-        guard let jobDirectoryNames = (try? fileManager.contentsOfDirectoryAtPath(self.queueDirectoryPathURL.path!)) else
+        let fileManager = FileManager.default
+        guard let jobDirectoryNames = (try? fileManager.contentsOfDirectory(atPath: self.queueDirectoryPathURL.path)) else
         {
             return []
         }
         
-        let jobs = jobDirectoryNames.flatMap({ (directoryName) -> NSURL? in
-            return self.queueDirectoryPathURL.URLByAppendingPathComponent(directoryName)
+        let jobs = jobDirectoryNames.flatMap({ (directoryName) -> URL? in
+            return self.queueDirectoryPathURL.appendingPathComponent(directoryName)
         }).flatMap({ (directoryURL) -> KyuJob? in
             do
             {
@@ -293,50 +293,50 @@ final internal class KyuWorker
             }
         }).filter({ (job) -> Bool in
             return job.shouldProcess
-        }).sort({ (jobA, jobB) -> Bool in
-            return jobA.processDate.compare(jobB.processDate) == .OrderedAscending
+        }).sorted(by: { (jobA, jobB) -> Bool in
+            return jobA.processDate.compare(jobB.processDate as Date) == .orderedAscending
         })
         
         return jobs
     }
     
-    internal func requestAllJobs(completionHandler: (jobs: [KyuJob]) -> Void)
+    internal func requestAllJobs(_ completionHandler: @escaping (_ jobs: [KyuJob]) -> Void)
     {
-        self.jobFetchingOperationQueue.addOperationWithBlock { [weak self] in
+        self.jobFetchingOperationQueue.addOperation { [weak self] in
             guard let weakSelf = self else { return }
             
             let jobs = weakSelf.fetchAllJobs()
-            completionHandler(jobs: jobs)
+            completionHandler(jobs)
         }
     }
     
     // MARK: File system
     
-    private func setupQueueDirectory() throws
+    fileprivate func setupQueueDirectory() throws
     {
-        try self.createDirectoryAtPath(self.queueDirectoryPathURL.path!)
+        try self.createDirectoryAtPath(self.queueDirectoryPathURL.path)
     }
     
-    private func setupTemporaryDirectory() throws
+    fileprivate func setupTemporaryDirectory() throws
     {
-        try self.createDirectoryAtPath(self.temporaryDirectoryPathURL.path!)
+        try self.createDirectoryAtPath(self.temporaryDirectoryPathURL.path)
     }
     
-    private func createDirectoryAtPath(directoryPath: String) throws
+    fileprivate func createDirectoryAtPath(_ directoryPath: String) throws
     {
-        let fileManager = NSFileManager.defaultManager()
+        let fileManager = FileManager.default
         
-        var isDirectory: ObjCBool = false
-        if fileManager.fileExistsAtPath(directoryPath, isDirectory: &isDirectory)
+        var isDirectory: ObjCBool = ObjCBool(false)
+        if fileManager.fileExists(atPath: directoryPath, isDirectory: &isDirectory)
         {
-            if !isDirectory
+            if !isDirectory.boolValue
             {
                 // TODO: raise error?
             }
         }
         else
         {
-            try fileManager.createDirectoryAtPath(directoryPath, withIntermediateDirectories: true, attributes: nil)
+            try fileManager.createDirectory(atPath: directoryPath, withIntermediateDirectories: true, attributes: nil)
         }
     }
 }

@@ -15,7 +15,7 @@ public final class KyuViewModel
     public let workers: [KyuWorkerViewModel]
     
     // Private
-    private let kyu: Kyu
+    fileprivate let kyu: Kyu
     
     // MARK: Initialization
     

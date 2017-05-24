@@ -13,7 +13,7 @@ import XCTest
 class KyuJobTests: XCTestCase
 {
     // Private
-    private var testJobURL: NSURL!
+    fileprivate var testJobURL: URL!
     
     // MARK: Setup
     
@@ -55,27 +55,27 @@ class KyuJobTests: XCTestCase
         job.incrementRetryCount()
         job.incrementRetryCount()
         
-        let originalIsDateEarlier = originalProcessDate.compare(job.processDate) == .OrderedAscending
+        let originalIsDateEarlier = originalProcessDate.compare(job.processDate) == .orderedAscending
         XCTAssert(originalIsDateEarlier)
     }
     
     // MARK: Helpers
     
-    private func createTestJob() -> NSURL
+    fileprivate func createTestJob() -> URL
     {
-        let directoryName = NSUUID().UUIDString
+        let directoryName = UUID().uuidString
         let directoryPath = NSTemporaryDirectory() + directoryName
         
-        let fileManager = NSFileManager.defaultManager()
+        let fileManager = FileManager.default
         
-        try! fileManager.createDirectoryAtPath(directoryPath, withIntermediateDirectories: true, attributes: nil)
+        try! fileManager.createDirectory(atPath: directoryPath, withIntermediateDirectories: true, attributes: nil)
         
-        let directoryPathURL = NSURL(fileURLWithPath: directoryPath)
-        let identifier = NSUUID().UUIDString
+        let directoryPathURL = URL(fileURLWithPath: directoryPath)
+        let identifier = UUID().uuidString
         KyuJob.createJob(identifier, arguments: ["test" : "test"], queueDirectoryURL: directoryPathURL)
         
-        let jobDirectoryName = try! fileManager.contentsOfDirectoryAtPath(directoryPath).first!
+        let jobDirectoryName = try! fileManager.contentsOfDirectory(atPath: directoryPath).first!
         
-        return directoryPathURL.URLByAppendingPathComponent(jobDirectoryName)
+        return directoryPathURL.appendingPathComponent(jobDirectoryName)
     }
 }

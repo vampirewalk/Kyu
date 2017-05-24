@@ -16,7 +16,7 @@ public final class KyuJobViewModel
     public let JSON: [String : AnyObject]
     
     // Private
-    private let job: KyuJob
+    fileprivate let job: KyuJob
     
     // MARK: Initialization
     

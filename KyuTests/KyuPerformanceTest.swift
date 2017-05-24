@@ -31,7 +31,7 @@ class KyuPerformanceTest: XCTestCase
         
         kyu.paused = false
         
-        self.measureBlock { () -> Void in
+        self.measure { () -> Void in
             while kyu.numberOfJobs > 0 { }
         }
     }
@@ -53,7 +53,7 @@ class KyuPerformanceTest: XCTestCase
         
         kyu.paused = false
         
-        self.measureBlock { () -> Void in
+        self.measure { () -> Void in
             while kyu.numberOfJobs > 0 { }
         }
     }
@@ -75,15 +75,15 @@ class KyuPerformanceTest: XCTestCase
         
         kyu.paused = false
         
-        self.measureBlock { () -> Void in
+        self.measure { () -> Void in
             while kyu.numberOfJobs > 0 { }
         }
     }
     
     // MARK: Helpers
     
-    private func randomQueueURL() -> NSURL
+    fileprivate func randomQueueURL() -> URL
     {
-        return NSURL(string: NSTemporaryDirectory() + "\(arc4random())\(arc4random())")!
+        return URL(string: NSTemporaryDirectory() + "\(arc4random())\(arc4random())")!
     }
 }

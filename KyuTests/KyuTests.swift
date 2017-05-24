@@ -14,7 +14,7 @@ import Kyu
 
 class TestJob: KyuJobProtocol
 {
-    func perform(arguments: [String : AnyObject]) -> KyuJobResult
+    func perform(_ arguments: [String : AnyObject]) -> KyuJobResult
     {
         return KyuJobResult.success
     }
@@ -22,7 +22,7 @@ class TestJob: KyuJobProtocol
 
 class FailingTestJob: KyuJobProtocol
 {
-    func perform(arguments: [String : AnyObject]) -> KyuJobResult
+    func perform(_ arguments: [String : AnyObject]) -> KyuJobResult
     {
         return KyuJobResult.fail
     }
@@ -34,19 +34,19 @@ class NewLineJob: KyuJobProtocol
 {
     static let filePathArgumentKey = "filePath"
     
-    func perform(arguments: [String : AnyObject]) -> KyuJobResult
+    func perform(_ arguments: [String : AnyObject]) -> KyuJobResult
     {
         guard let filePath = arguments[NewLineJob.filePathArgumentKey] as? String,
-              let fileHandle = NSFileHandle(forWritingAtPath: filePath) else
+              let fileHandle = FileHandle(forWritingAtPath: filePath) else
         {
             return KyuJobResult.fail
         }
         
         let stringToWrite = "Hello\n"
-        let stringToWriteData = stringToWrite.dataUsingEncoding(NSUTF8StringEncoding)!
+        let stringToWriteData = stringToWrite.data(using: String.Encoding.utf8)!
         
         fileHandle.seekToEndOfFile()
-        fileHandle.writeData(stringToWriteData)
+        fileHandle.write(stringToWriteData)
         fileHandle.closeFile()
         
         return KyuJobResult.success
@@ -56,9 +56,9 @@ class NewLineJob: KyuJobProtocol
 
 class KyuTests: XCTestCase, KyuDataSource
 {
-    private var kyu: Kyu!
-    private let operationQueue = NSOperationQueue()
-    private var shouldIncrementRetryCount = true
+    fileprivate var kyu: Kyu!
+    fileprivate let operationQueue = OperationQueue()
+    fileprivate var shouldIncrementRetryCount = true
     
     // MARK: Setup
     
@@ -114,8 +114,8 @@ class KyuTests: XCTestCase, KyuDataSource
         self.kyu.queueJob(["1":2, "3":4])
         self.kyu.queueJob(["1":2, "3":4])
         
-        let expectation = self.expectationWithDescription("check number of jobs")
-        self.operationQueue.addOperationWithBlock { () -> Void in
+        let expectation = self.expectation(description: "check number of jobs")
+        self.operationQueue.addOperation { () -> Void in
             while true
             {
                 if self.kyu.numberOfJobs == 3
@@ -126,17 +126,17 @@ class KyuTests: XCTestCase, KyuDataSource
             }
         }
         
-        self.waitForExpectationsWithTimeout(3.0, handler: nil)
+        self.waitForExpectations(timeout: 3.0, handler: nil)
     }
     
     func testOutputShouldContain4NewLines()
     {
         // Create temp file
-        let resultFileDirectoryPath = self.randomQueueURL().path!
+        let resultFileDirectoryPath = self.randomQueueURL().path
         let resultFilePath = resultFileDirectoryPath + "/result.txt"
         
-        try! NSFileManager.defaultManager().createDirectoryAtPath(resultFileDirectoryPath, withIntermediateDirectories: true, attributes: nil)
-        NSFileManager.defaultManager().createFileAtPath(resultFilePath, contents: nil, attributes: nil)
+        try! FileManager.default.createDirectory(atPath: resultFileDirectoryPath, withIntermediateDirectories: true, attributes: nil)
+        FileManager.default.createFile(atPath: resultFilePath, contents: nil, attributes: nil)
         
         // Setup Kyu
         let queueURL = self.randomQueueURL()
@@ -146,19 +146,19 @@ class KyuTests: XCTestCase, KyuDataSource
         newLineKyu.queueJob([NewLineJob.filePathArgumentKey:resultFilePath])
         newLineKyu.queueJob([NewLineJob.filePathArgumentKey:resultFilePath])
         
-        let expectation = self.expectationWithDescription("write all lines")
+        let expectation = self.expectation(description: "write all lines")
         
-        self.operationQueue.addOperationWithBlock { () -> Void in
+        self.operationQueue.addOperation { () -> Void in
             sleep(1) // Give time to write data to disc :/
             
             while true
             {
                 if newLineKyu.numberOfJobs == 0
                 {
-                    let resultFileData = NSData(contentsOfFile: resultFilePath)!
-                    let resultString = NSString(data: resultFileData, encoding: NSUTF8StringEncoding)!
+                    let resultFileData = try! Data(contentsOf: URL(fileURLWithPath: resultFilePath))
+                    let resultString = NSString(data: resultFileData, encoding: String.Encoding.utf8.rawValue)!
                     
-                    let resultLines = resultString.componentsSeparatedByString("\n")
+                    let resultLines = resultString.components(separatedBy: "\n")
                     XCTAssertEqual(resultLines.count, 4)
                     
                     expectation.fulfill()
@@ -167,7 +167,7 @@ class KyuTests: XCTestCase, KyuDataSource
             }
         }
         
-        self.waitForExpectationsWithTimeout(10.0, handler: nil)
+        self.waitForExpectations(timeout: 10.0, handler: nil)
     }
     
     func testNotIncrementingRetryCount()
@@ -182,16 +182,16 @@ class KyuTests: XCTestCase, KyuDataSource
         // Add job
         kyu.queueJob(["1":2])
         
-        let expectation = self.expectationWithDescription("shouldn't delete job")
+        let expectation = self.expectation(description: "shouldn't delete job")
         
-        self.operationQueue.addOperationWithBlock { () -> Void in
+        self.operationQueue.addOperation { () -> Void in
             sleep(1) // Give time to write data to disc :/
             
             XCTAssertEqual(kyu.numberOfJobs, 1)
             expectation.fulfill()
         }
         
-        self.waitForExpectationsWithTimeout(10.0, handler: nil)
+        self.waitForExpectations(timeout: 10.0, handler: nil)
     }
     
     // MARK: Cancelling jobs
@@ -203,9 +203,9 @@ class KyuTests: XCTestCase, KyuDataSource
         // Add job
         let jobIdentifier = self.kyu.queueJob(["1":2])
         
-        let expectation = self.expectationWithDescription("cancel job")
+        let expectation = self.expectation(description: "cancel job")
         
-        self.operationQueue.addOperationWithBlock { () -> Void in
+        self.operationQueue.addOperation { () -> Void in
             sleep(1) // Give time to write data to disc :/
             
             XCTAssertEqual(self.kyu.numberOfJobs, 1)
@@ -216,7 +216,7 @@ class KyuTests: XCTestCase, KyuDataSource
             expectation.fulfill()
         }
         
-        self.waitForExpectationsWithTimeout(10.0, handler: nil)
+        self.waitForExpectations(timeout: 10.0, handler: nil)
     }
     
     func testCancellingJobThatDoesntExist()
@@ -238,9 +238,9 @@ class KyuTests: XCTestCase, KyuDataSource
     
     // MARK: Helpers
     
-    private func randomQueueURL() -> NSURL
+    fileprivate func randomQueueURL() -> URL
     {
-        return NSURL(string: NSTemporaryDirectory() + "\(arc4random())\(arc4random())")!
+        return URL(string: NSTemporaryDirectory() + "\(arc4random())\(arc4random())")!
     }
     
     // MARK: KyuDataSource

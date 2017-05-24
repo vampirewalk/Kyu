@@ -17,7 +17,7 @@ public final class KyuWorkerViewModel
     public let numberOfJobs: Int
     
     // Private
-    private let worker: KyuWorker
+    fileprivate let worker: KyuWorker
     
     // MARK: Initialization
     
@@ -31,14 +31,14 @@ public final class KyuWorkerViewModel
     
     // MARK: Fetch jobs
     
-    public func requestAllJobs(completionHandler: (jobs: [KyuJobViewModel]) -> Void)
+    public func requestAllJobs(_ completionHandler: @escaping (_ jobs: [KyuJobViewModel]) -> Void)
     {
         self.worker.requestAllJobs { (jobs) in
             let jobViewModels = jobs.map({ (job) -> KyuJobViewModel in
                 return KyuJobViewModel(job: job)
             })
             
-            completionHandler(jobs: jobViewModels)
+            completionHandler(jobViewModels)
         }
     }
 }

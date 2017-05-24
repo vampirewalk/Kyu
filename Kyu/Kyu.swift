@@ -29,14 +29,14 @@ public enum KyuJobResult
  */
 public protocol KyuJobProtocol
 {
-    func perform(arguments: KyuJobArguments) -> KyuJobResult
+    func perform(_ arguments: KyuJobArguments) -> KyuJobResult
 }
 
 
 /**
     KyuConfigurationError
  */
-public enum KyuConfigurationError: ErrorType
+public enum KyuConfigurationError: Error
 {
     case jobNotProvided
     case directoryURLNotProvided
@@ -46,7 +46,7 @@ public enum KyuConfigurationError: ErrorType
 /**
     KyuJobManagementError
  */
-public enum KyuJobManagementError: ErrorType
+public enum KyuJobManagementError: Error
 {
     case jobNotFound
 }
@@ -55,12 +55,12 @@ public enum KyuJobManagementError: ErrorType
 /**
     KyuConfiguration
  */
-public class KyuConfiguration
+open class KyuConfiguration
 {
-    public var numberOfWorkers = 1
-    public var job: KyuJobProtocol?
-    public var directoryURL: NSURL?
-    public var maximumNumberOfRetries = 0
+    open var numberOfWorkers = 1
+    open var job: KyuJobProtocol?
+    open var directoryURL: URL?
+    open var maximumNumberOfRetries = 0
 }
 
 
@@ -69,7 +69,7 @@ public class KyuConfiguration
  
     - InvalidNumberOfWorkers: Invalid number of workers provided (e.g. 0)
  */
-public enum KyuError: ErrorType
+public enum KyuError: Error
 {
     case invalidNumberOfWorkers
 }
@@ -89,15 +89,15 @@ public protocol KyuDataSource
  */
 public protocol KyuDelegate
 {
-    func kyu(kyu: Kyu, didStartProcessingJob job: KyuJobViewModel)
-    func kyu(kyu: Kyu, didFinishProcessingJob job: KyuJobViewModel, withResult result: KyuJobResult)
+    func kyu(_ kyu: Kyu, didStartProcessingJob job: KyuJobViewModel)
+    func kyu(_ kyu: Kyu, didFinishProcessingJob job: KyuJobViewModel, withResult result: KyuJobResult)
 }
 
 
-public class Kyu: KyuWorkerDataSource, KyuWorkerDelegate
+open class Kyu: KyuWorkerDataSource, KyuWorkerDelegate
 {
     /// Pause/unpause processing jobs
-    public var paused = false {
+    open var paused = false {
         didSet
         {
             for thread in self.workers
@@ -108,7 +108,7 @@ public class Kyu: KyuWorkerDataSource, KyuWorkerDelegate
     }
     
     /// Number of jobs queued
-    public var numberOfJobs: Int {
+    open var numberOfJobs: Int {
         let total = self.workers.map { (worker) -> Int in
             return worker.numberOfJobs
         }.reduce(0) { (count, jobCount) -> Int in
@@ -119,23 +119,23 @@ public class Kyu: KyuWorkerDataSource, KyuWorkerDelegate
     }
     
     /// Number of workers
-    public var numberOfWorkers: Int {
+    open var numberOfWorkers: Int {
         return self.workers.count
     }
     
     /// Data source
-    public var dataSource: KyuDataSource?
+    open var dataSource: KyuDataSource?
     
     /// Delegate
-    public var delegate: KyuDelegate?
+    open var delegate: KyuDelegate?
     
     // Internal
-    internal private(set) var workers = [KyuWorker]()
+    internal fileprivate(set) var workers = [KyuWorker]()
     
     // Private
-    private let job: KyuJobProtocol
-    private let baseDirectoryURL: NSURL
-    private let maximumNumberOfRetries: Int
+    fileprivate let job: KyuJobProtocol
+    fileprivate let baseDirectoryURL: URL
+    fileprivate let maximumNumberOfRetries: Int
     
     // MARK: -
     
@@ -148,10 +148,10 @@ public class Kyu: KyuWorkerDataSource, KyuWorkerDelegate
 
         - returns: Configured Kyu object
      */
-    public class func configure(configHandler: (config: KyuConfiguration) -> ()) throws -> Kyu
+    open class func configure(_ configHandler: (_ config: KyuConfiguration) -> ()) throws -> Kyu
     {
         let configuration = KyuConfiguration()
-        configHandler(config: configuration)
+        configHandler(configuration)
         
         guard let job = configuration.job else
         {
@@ -191,7 +191,7 @@ public class Kyu: KyuWorkerDataSource, KyuWorkerDelegate
          
          - returns: Kyu object
      */
-    public required init(numberOfWorkers: Int, job: KyuJobProtocol, directoryURL: NSURL, maximumNumberOfRetries: Int) throws
+    public required init(numberOfWorkers: Int, job: KyuJobProtocol, directoryURL: URL, maximumNumberOfRetries: Int) throws
     {
         self.job = job
         self.baseDirectoryURL = directoryURL
@@ -227,15 +227,15 @@ public class Kyu: KyuWorkerDataSource, KyuWorkerDelegate
          - returns: Job identifier, you can use this alongside the KyuDelegate to track when a job
                     has started/finished.
      */
-    public func queueJob(arguments: KyuJobArguments) -> String
+    open func queueJob(_ arguments: KyuJobArguments) -> String
     {
         let worker = self.nextWorkerToAddJobTo()
         return worker.queueJob(arguments)
     }
     
-    private func nextWorkerToAddJobTo() -> KyuWorker
+    fileprivate func nextWorkerToAddJobTo() -> KyuWorker
     {
-        let sortedWorkers = self.workers.sort { (threadA: KyuWorker, threadB: KyuWorker) -> Bool in
+        let sortedWorkers = self.workers.sorted { (threadA: KyuWorker, threadB: KyuWorker) -> Bool in
             return threadA.numberOfJobs < threadB.numberOfJobs
         }
         
@@ -249,7 +249,7 @@ public class Kyu: KyuWorkerDataSource, KyuWorkerDelegate
          
          - throws: KyuJobManagementError
      */
-    public func cancelJob(identifier: String) throws
+    open func cancelJob(_ identifier: String) throws
     {
         var results = [Bool]()
         for worker in self.workers
@@ -266,23 +266,23 @@ public class Kyu: KyuWorkerDataSource, KyuWorkerDelegate
     
     // MARK: KyuWorkerDataSource
     
-    internal func jobForKyuWorker(worker: KyuWorker) -> KyuJobProtocol
+    internal func jobForKyuWorker(_ worker: KyuWorker) -> KyuJobProtocol
     {
         return self.job
     }
     
-    internal func baseTemporaryDirectoryForKyuWorker(worker: KyuWorker) -> NSURL
+    internal func baseTemporaryDirectoryForKyuWorker(_ worker: KyuWorker) -> URL
     {
-        let temporaryDirectory = NSURL(string: NSTemporaryDirectory())!
-        return temporaryDirectory.URLByAppendingPathComponent("KyuTemp")
+        let temporaryDirectory = URL(string: NSTemporaryDirectory())!
+        return temporaryDirectory.appendingPathComponent("KyuTemp")
     }
     
-    internal func baseJobDirectoryForKyuWorker(thread: KyuWorker) -> NSURL
+    internal func baseJobDirectoryForKyuWorker(_ thread: KyuWorker) -> URL
     {
         return self.baseDirectoryURL
     }
     
-    internal func maximumNumberOfRetriesForKyuWorker(worker: KyuWorker) -> Int
+    internal func maximumNumberOfRetriesForKyuWorker(_ worker: KyuWorker) -> Int
     {
         return self.maximumNumberOfRetries
     }
@@ -294,7 +294,7 @@ public class Kyu: KyuWorkerDataSource, KyuWorkerDelegate
     
     // MARK: KyuWorkerDelegate
     
-    internal func worker(worker: KyuWorker, didStartProcessingJob job: KyuJob)
+    internal func worker(_ worker: KyuWorker, didStartProcessingJob job: KyuJob)
     {
         guard let unwrappedDelegate = self.delegate else { return }
         
@@ -302,7 +302,7 @@ public class Kyu: KyuWorkerDataSource, KyuWorkerDelegate
         unwrappedDelegate.kyu(self, didStartProcessingJob: jobViewModel)
     }
     
-    internal func worker(worker: KyuWorker, didFinishProcessingJob job: KyuJob, withResult result: KyuJobResult)
+    internal func worker(_ worker: KyuWorker, didFinishProcessingJob job: KyuJob, withResult result: KyuJobResult)
     {
         guard let unwrappedDelegate = self.delegate else { return }
         
